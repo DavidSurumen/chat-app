@@ -84,7 +84,6 @@ void chat(int sockfd)
 	for (;;) {
 		/* send something to server such as login credentials */
 		memset(buff,0, sizeof(buff));
-		printf("Enter the string : ");
 
 		n = 0;
 		while ((buff[n++] = getchar()) != '\n');
@@ -97,7 +96,8 @@ void chat(int sockfd)
 		printf("waiting for response.........\n");
 
 		recv(sockfd, buff, sizeof(buff), 0);
-		printf("From server: %s\n",buff);
+		printf("%s\n",buff);
+		printf(">");
 
 		if ((strncmp(buff, "exit", 4)) == 0) {
 			printf("Client Exit...\n");
