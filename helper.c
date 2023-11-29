@@ -19,19 +19,20 @@ typedef struct data_storage {
 	pthread_mutex_t mutex;
 } data;
 
-char *read_items(data**);
-void add_item(data**, char*, int);
+int read_items(data**, char*, size_t);
+int reload_items(data**, char*, int);
 int delete_item(char*, data**);
-void persist_to_file(data*);
+int save(data*);
 int lock_file(int);
 int unlock_file(int);
 int build_from_file(const char*);
-void create_node(char *, data**);
+int create_node(char *, data**);
+int search(char*);
 
 // Consider an Inventory System.
 /**
  * ==>  hold store number
- * ==>  item codes and item names 
+ * ==>  item codes and item names
  * ==>  item quantities.
  *
  * ==>  Every user should be able to see this information, and update it
@@ -50,7 +51,7 @@ void create_node(char *, data**);
 
 
 // linked list head
-data *list_head = NULL; 
+data *list_head = NULL;
 
 /**
  * - DOC -
@@ -86,60 +87,95 @@ void *chat(void *aconnfd)
 	3. List Items\n\
 	4. Search for Item\n";
 
+	int logged_in = 0;
+
 	/*infinite loop for chat*/
 	for (;;) {
-
-		/*memset(buff,0, sizeof(buff));*/
-		/*data *head = NULL;*/
+		memset(buff,0, sizeof(buff));
 		recv(connfd, buff, sizeof(buff), 0);
 
-		if (*buff == '1') {
-			char *prompt = "Enter name of the item";
-			// implement logic to add item
-			send(connfd, prompt, strlen(prompt) + 1, 0);
-			
-			recv(connfd, buff, sizeof(buff), 0);
-			create_node(buff, &list_head);
-		} else if (*buff == '2') {
-			char *prompt = "Enter name of item to delete";
-			char *msg;
-
-			send(connfd, prompt, strlen(prompt) + 1, 0);
-			recv(connfd, buff, sizeof(buff), 0);
-			
-			if (delete_item(buff, &list_head) == 0) {
-				msg = "Deleted Successfully!";
-				send(connfd, msg, strlen(msg) + 1, 0);
-			} else {
-				msg = "Failed! No item with that name";
-				send(connfd, msg, strlen(msg) + 1, 0);
-			}
-		} else if (*buff == '3') {
-			char *items = "";
-
-			items = read_items(&list_head);
-			if (!items)
-				items = "There is no items yet.";
-			send(connfd, items, strlen(items) + 1, 0);
-		} else if (*buff == '4') {
-			// search for a specific item
-			char *prompt = "Enter Item to search";
-
-			printf("\n\nThe client would like to search for an item\n\n");
-			send(connfd, prompt, strlen(prompt) + 1, 0);
-			recv(connfd, buff, sizeof(buff), 0);
-
+		if (strncmp("login", buff, 5) == 0) {
+			logged_in = 1;
+			printf("Connected\n");
 		}
 
-		/*printf("From client : %s\t To client : %s\n",buff,buff);*/
-
 		/*send something specific for this customer*/
-		send(connfd, menu, strlen(menu) + 1, 0);
+		if (logged_in) {
+			if (*buff == '1') {
+				char *prompt = "Enter name of the item";
+				char *status = "";
+				// Add an item
+				send(connfd, prompt, strlen(prompt) + 1, 0);
+				recv(connfd, buff, sizeof(buff), 0);
+				if (create_node(buff, &list_head) == 0) {
+					status = "Success!";
+					send(connfd, status, strlen(status) + 1, 0);
+				} else {
+					status = "Try again!";
+					send(connfd, status, strlen(status) + 1, 0);
+				}
+			} else if (*buff == '2') {
+				// Delete an item
+				char *prompt = "Enter name of item to delete";
+				char *msg;
 
-		/*if msg contains "Exit" then server exit and chat ended.*/
-		if (strncmp("exit", buff, 4) == 0) {
+				send(connfd, prompt, strlen(prompt) + 1, 0);
+				recv(connfd, buff, sizeof(buff), 0);
+
+				if (delete_item(buff, &list_head) == 0) {
+					msg = "Deleted Successfully!";
+					send(connfd, msg, strlen(msg) + 1, 0);
+				} else {
+					msg = "Item Not in Store.";
+					send(connfd, msg, strlen(msg) + 1, 0);
+				}
+			} else if (*buff == '3') {
+				// List all items
+				char items[MAX];
+				items[0] = '\0';  // initialize the buffer
+				char *msg = "Store is Empty!";
+
+				if(read_items(&list_head, items, sizeof(items)) == 0) {
+					// reading was successful
+					send(connfd, items, strlen(items) + 1, 0);
+				} else
+					send(connfd, msg, strlen(msg) + 1, 0);
+			} else if (*buff == '4') {
+				// search for a specific item
+				char *prompt = "Enter Item to search";
+				send(connfd, prompt, strlen(prompt) + 1, 0);
+				recv(connfd, buff, sizeof(buff), 0);
+
+				if (search(buff) == 0) {
+					/*char *msg = strcat("Found! ", buff);*/
+					/*char *msg = strcat(buff, " has been impounded!");*/
+					char msg[100];
+					memset(&msg, 0, sizeof(msg));
+					strcat(msg, "Found! ");
+					strcat(msg, buff);
+					strcat(msg, " has been impounded.");
+					send(connfd, msg, strlen(msg) + 1, 0);
+				} else {
+					char *msg = "Not Found.";
+					send(connfd, msg, strlen(msg) + 1, 0);
+				}
+
+			} else if (strncmp("exit", buff, 4) == 0) {
+				/*if msg contains "Exit" then server exit and chat ended.*/
+				printf("Server Exit for customer\n");
+				send(connfd, "exit", strlen("exit") + 1, 0);
+				break;
+			}
+			send(connfd, menu, strlen(menu) + 1, 0);
+
+		} else if (strncmp("exit", buff, 4) == 0) {
+			/*if msg contains "Exit" then server exit and chat ended.*/
 			printf("Server Exit for customer\n");
+			send(connfd, "exit", strlen("exit") + 1, 0);
 			break;
+		} else {
+			char *msg = "Please login.";
+			send(connfd, msg, strlen(msg) + 1, 0);
 		}
 	}
 	close(connfd);
@@ -147,27 +183,40 @@ void *chat(void *aconnfd)
 }
 
 /**
+ * Return: 0 (Item found) Otherwise -1
+ */
+int search(char *name) {
+	if (!list_head)
+		build_from_file("linked_list_data.txt");
+
+	data *tmp = list_head;
+
+	printf("Searching for %s...\n", name);
+	if (!list_head) {
+		return -1;  // list is empty
+	}
+
+	while(tmp) {
+		if (strcmp(tmp->item_name, name) == 0)
+			return 0;  // found the item
+		tmp = tmp->next;
+	}
+	return -1;  // item not found
+}
+
+/**
  *
  *  -- DOC --
  *
  */
-void create_node(char *name, data **head) {
+int create_node(char *name, data **head) {
 	int i = 1;
+
+	if (strcmp(name, "") == 0)
+		return -1;  // client just entered an empty string for item name
 
 	if (!*head)
 		build_from_file("linked_list_data.txt");
-	
-	data *tmp = *head;
-	printf("stored items\n");
-	printf("---------------\n");
-	while (tmp != NULL) {
-		printf("%d: %s\n", i, tmp->item_name);
-		/*if (tmp->next == NULL)*/
-			/*break;*/
-		tmp = tmp->next;
-		i++;
-	}
-	printf("\n");
 
 	data *newnode = (data*)malloc(sizeof(data));
 	data *current;
@@ -179,9 +228,9 @@ void create_node(char *name, data **head) {
 
 	newnode->item_name = strdup(name);
 	newnode->next = NULL;
-
 	pthread_mutex_init(&newnode->mutex, NULL);
 
+	pthread_mutex_lock(&mutex); // lock the linked list for addition of new node
 	if (*head == NULL) {
 		newnode->next = *head;
 		*head = newnode;
@@ -192,23 +241,29 @@ void create_node(char *name, data **head) {
 		}
 		current->next = newnode;
 	}
+	if (save(*head) != 0)
+		return -1;
+	pthread_mutex_unlock(&mutex);
 
-	persist_to_file(*head);
-	printf("Added Item: %d: %s\n", i, newnode->item_name);
+	printf("Adding %s...\n", newnode->item_name);
+	return 0; // success
 }
 
-void add_item(data **head, char *item, int rank) {
+int reload_items(data **head, char *item, int rank) {
 	data *newnode = (data*)malloc(sizeof(data));
 	data *current;
 
 	if (!newnode) {
 		fprintf(stderr, "memory alloc failed\n");
-		exit(1);
+		return -1;
 	}
 	newnode->item_name = strdup(item);
 	newnode->next = NULL;
+	pthread_mutex_init(&newnode->mutex, NULL);
 
+	pthread_mutex_lock(&mutex);  // lock the linked list to add nodes
 	if (rank == 1) {
+		// rank 1 means the item is the first in the file, therefore makes the head
 		newnode->next = *head;
 		*head = newnode;
 	} else {
@@ -218,6 +273,8 @@ void add_item(data **head, char *item, int rank) {
 		}
 		current->next = newnode;
 	}
+	pthread_mutex_unlock(&mutex);
+	return 0;
 }
 
 /**
@@ -226,24 +283,42 @@ void add_item(data **head, char *item, int rank) {
  *
  */
 int delete_item(char *name, data **head) {
-	data *tmp = head;
+	data *tmp = *head;
 	data *fixer;
 	int found = 0;
 
+	if (!tmp)
+		return 1;
+
+	pthread_mutex_lock(&mutex);
+	if (strcmp((*head)->item_name, name) == 0) {
+		printf("Deleting %s...\n", name);
+		*head = (*head)->next;
+		free(tmp);
+		save(*head);
+		pthread_mutex_unlock(&mutex);
+		return 0;
+	}
+	pthread_mutex_unlock(&mutex);
+
 	while (tmp->next) {
-		if (tmp->next->item_name == name) {
+		if (strcmp(tmp->next->item_name, name) == 0) {
+			found = 1;
+			printf("Deleting %s\n", name);
+
 			fixer = tmp->next;
 			tmp->next = tmp->next->next;
+
 			free(fixer->item_name);
 			free(fixer);
-			found = 1;
-			break; // successfuly deleted 
+			save(*head);
+			break; // successfuly deleted
 		}
 		tmp = tmp->next;
 	}
 	if (found != 1)
 		return 1; // failed to delete
-       return 0;	
+       return 0;
 }
 
 /**
@@ -251,36 +326,35 @@ int delete_item(char *name, data **head) {
  * -- DOC --
  *
  */
-char *read_items(data **head) {
-	data *tmp = head;
-	char *items_array[1024]; // declare an array to hold the item names
-	int i = 0;
-	int total_length = 1;
-	int count = 0;
+int read_items(data **head, char *items_buffer, size_t max_length) {
+	if (!*head)
+		build_from_file("linked_list_data.txt");
 
+	data *tmp = *head;
+	size_t total_length = 0;
+
+	if (!tmp)
+		return -1;
+
+	printf("Listing Items...\n");
+	strcat(items_buffer, "\nITEMS IN STORE\n");
+	strcat(items_buffer, "---------------\n");
 	while (tmp) {
-		items_array[count] = tmp->item_name;
+		size_t item_length = strlen(tmp->item_name);
+
+		// check if there is enough space in the buffer
+		if (total_length + item_length + 1 <= max_length) {
+			// concatenate current item_name and '\n' to the buffer
+			strcat(items_buffer, tmp->item_name);
+			strcat(items_buffer, "\n");
+			total_length += item_length + 1;
+		} else {
+			// case where the buffer is filled up or not large enough
+			break;
+		}
 		tmp = tmp->next;
-		count++;
 	}
-
-	if (!items_array[0]) {
-		return NULL;
-	}
-
-	for (int i = 0; i < count; i++) {
-		printf("%s\n", items_array[i]);
-		total_length += strlen(items_array[i]) + 1;
-	}
-
-	char items[total_length];
-	items[0] = '\0';
-
-	for (int i = 0; i < count; i++) {
-		strcat(items, items_array[i]);
-		strcat(items, "\n");
-	}
-	return items;
+	return 0;
 }
 
 /**
@@ -288,27 +362,25 @@ char *read_items(data **head) {
  * -- DOC --
  *
  */
-void persist_to_file(data *head) {
+int save(data *head) {
 	int fd = open("linked_list_data.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
 	if (fd == -1) {
 		perror("Error opening file");
-		exit(1);
+		return -1;
 	}
 
 	// lock the file for writing
 	if (lock_file(fd) == -1) {
 		perror("Error locking file");
 		close(fd);
-		exit(1);
+		return -1;
 	}
 
 	// write the linked list data to the file
 	data *current = head;
 	while (current != NULL) {
 		// lock the node's mutex before accessing its data
-		pthread_mutex_lock(&current->mutex);
 		dprintf(fd, "%s\n", current->item_name);
-		pthread_mutex_unlock(&current->mutex);
 
 		current = current->next;
 	}
@@ -317,6 +389,7 @@ void persist_to_file(data *head) {
 		perror("Error unlocking file");
 	}
 	close(fd);
+	return 0;
 }
 
 int lock_file(int fd) {
@@ -343,10 +416,10 @@ int build_from_file(const char *filename) {
 	int count = 1;
 	FILE *file = fopen(filename, "r");
 	if (file == NULL) {
-		puts("Creating Shared file...");
 		return -1;
 	}
 	char contents[100];
+
 	while (fgets(contents, sizeof(contents), file) != NULL) {
 		size_t len = strlen(contents);
 		if (len > 0 && contents[len-1] == '\n') {
@@ -354,7 +427,8 @@ int build_from_file(const char *filename) {
 		}
 
 		if (contents[0] && contents[0] != '\n') {
-			add_item(&list_head, contents, count);
+			if (reload_items(&list_head, contents, count) != 0)
+				return -1;
 			count++;
 		}
 	}
