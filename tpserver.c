@@ -66,8 +66,10 @@ int main(int argc, char const* argv[])
 		perror("listen error");
 		exit(1);
 	}
-	else
-		printf("Waiting for customers\n");
+	else {
+		printf("NAIROBI CITY COUNTY IMPOUNDED ITEMS\n");
+		printf("-----------------------------------\n");
+	}
 
 	/* Create threadpool for handling multiple client requests */
 	for(int j=0;j<MAX_PENDING;j++){

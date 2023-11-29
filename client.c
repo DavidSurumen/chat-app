@@ -93,7 +93,7 @@ void chat(int sockfd)
 
 		/* read response from server */
 		memset(buff,0, sizeof(buff));
-		printf("waiting for response.........\n");
+		printf("waiting....\n\n");
 
 		recv(sockfd, buff, sizeof(buff), 0);
 		printf("%s\n",buff);
